@@ -1,253 +1,160 @@
-<!DOCTYPE html>
-<html lang="en">
-  <head>
+var express = require('express');
+var app = express();
+var fs = require("fs");
+var bodyParser = require('body-parser');
+var request = require('request');
+var resolve = require('path').resolve
 
-    <!--
-      This is the main Handlebars template for the site
-      - When the user visits the homepage or submits a color the app calls the endpoints in server.js
-      - The server script passes data in here and the Handlebars code builds it into the HTML page
-    -->
-
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-
-    <title>{{seo.title}}</title>
-
-    <!-- Meta tags for SEO and social sharing -->
-    <link rel="canonical" href="{{seo.url}}">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css">
-
-    <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.3/dist/jquery.slim.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
-    <meta name="description" content="{{seo.description}}">
-    <meta name="viewport" content="width=device-width">
-
-
-
-<script type="text/javascript" src="https://code.jquery.com/jquery-latest.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
-
-<style>
-.h100{
-background-color: #FFB6C1	;
-height: 100vh;
-  
-}
-body{
-    background-color: #FFB6C1	;
-
+const fileUpload = require('express-fileupload');
+var jimp = require('jimp');
+var oxr = require('onnxruntime-web');
+var session=0;
+app.use(bodyParser.json({limit: '50mb'}));
+app.use(bodyParser.urlencoded({
+         limit: '50mb',
+         extended: true
+      }));
+      
+function mean(arr){
+var total = 0;
+for(var i = 0; i < arr.length; i++) {
+    total += arr[i];
 }
 
-
-input
-{color: transparent;
+return total / arr.length;
 }
-#title{
-    color:white;
-    font-size:600%;
+function stdev(array){
+  const n = array.length
+  const mean = array.reduce((a, b) => a + b) / n
+  return Math.sqrt(array.map(x => Math.pow(x - mean, 2)).reduce((a, b) => a + b) / n)
 }
+async function runModel(model, preprocessedData){
+    const start = new Date();
+    try {
+      const feeds = {};
+      feeds[model.inputNames[0]] = preprocessedData;
+      const outputData = await model.run(feeds);
+      const end = new Date();
+      const inferenceTime = (end.getTime() - start.getTime());
+      const output = outputData[model.outputNames[0]];
+      return [output, inferenceTime];
+    } catch (e) {
+      console.error("error");
+     // throw new Error();
+    }
+  }
 
-</style>
-  </head>
-  <body>
-
-<div class="h100 container-fluid">
-      <div class="h100 col" role="main">
-          <h1 class="text-center" id="title">Face Beauty Predictor</h1>
-        <div class="h100 justify-content-center text-center">
-        <canvas   id="mycanvas" hidden></canvas>
-        <canvas hidden id="fscanvas"></canvas>
-
-        <canvas  id="mycanvas2" hidden width=350px, height=350px></canvas>
-        <div class="text-center black">
-            <input id="inp" type="file" name="file" value="" title=" ">
-
-</div>
-</div>
-      </div>
-    </div>
-      <script>
-/*$.post( "/test", function( data ) {
-console.log("good "+data);
-});*/
-
-
-canvas = document.getElementById('mycanvas');
-canvas2 = document.getElementById('mycanvas2');
-fscanvas =  document.getElementById('fscanvas');
-
-const context = canvas.getContext('2d');
-const context2 = canvas2.getContext('2d');
-const fscontext=fscanvas.getContext('2d');
-
-var fsratio = 1;
-
-var img = new Image();
-var tratio=1;
-
-var arrfunction=[];
-
-
-function add_score(data,x,y,l){
-   var text_size=Math.min(l/10,30);
-   context.fillStyle = "black";
-   context.font = text_size+"px Arial";
-  context.fillText(Math.round(data[0]*2*10)/10+"/10",x*fsratio+10, y*fsratio+text_size);
-   //context.fillText("Score : "+Math.round(1/(1+Math.exp(-3*(data[0]-0.86)+6.21))*10*100)/100+"/10",x+10, y+22);
-
-   console.log("x*tratio : "+x*tratio+"  "+y*tratio)
-   
-   context.stroke();
-                
-}
-
-function call_inference(data,x,y,l){
-     $.ajax({
-                type: "POST",
-                url: "/test",
-                data: {content: data},
-                timeout: 600000, // 10 seconds
-                success: function(score){
-                    console.log("score : "+JSON.stringify(data))
-                 add_score(score,x,y,l);
-               },
-                error: function(xhr, status, error) {
-                  console.log("Request Failed: " + error);
-                }
-              });
-}
-function update_canvas(json){
-  console.log(JSON.stringify(json))
-  json=json.body
-  var im2=new Image();
-  im2.src=fscanvas.toDataURL();
- var iscalled=false;
-  im2.onload= function(e){
-
- 
-
-  for(var i=0;i<json.responses[0].faceAnnotations.length;i++){
-                 if(json.responses[0].faceAnnotations[i].detectionConfidence>0.4){
-                     iscalled=true;
-                 var coords = json.responses[0].faceAnnotations[i].fdBoundingPoly.vertices
-                 console.log('coords : '+JSON.stringify(coords))
-                 context.fillStyle = "rgba(250,225,255,0.5)";
-
-                 context.beginPath();
-
-                   context.fillRect(coords[0].x*fsratio, coords[0].y*fsratio, (coords[1].x-coords[0].x)*fsratio, (coords[2].y-coords[0].y)*fsratio);
-                   context2.clearRect(0, 0, mycanvas2.width, mycanvas2.height)
-          
-                   
-                    var swidth =Math.max((coords[2].y-coords[0].y),(coords[1].x-coords[0].x))*1.2;
-                    var sheight =Math.max((coords[2].y-coords[0].y),(coords[1].x-coords[0].x))*1.2;
-                    var sx = coords[0].x-sheight/1.2*0.1;
-                    var sy = coords[0].y-sheight/1.2*0.1;
-                    var dx = 00;
-                    var dy = 00;
-                    var dx = sx;
-                    var dy = sy;
-                    var dwidth=350;
-                    var dheight=350;
-                
-                    console.log("called loaded : "+dwidth+" "+swidth+" "+mycanvas2.width+" "+(coords[2].y-coords[0].y),(coords[1].x-coords[0].x));
-                    context2.drawImage(im2,
-                    sx, sy,   // Start at 70/20 pixels from the left and the top of the image (crop),
-                    swidth,sheight,   // "Get" a `50 * 50` (w * h) area from the source image (crop),
-                    0, 0,     // Place the result at 0, 0 in the canvas,
-                    dwidth,dheight); // With as width / height: 100 * 100 (scale)
-                    call_inference(canvas2.toDataURL().split(',')[1],coords[0].x,coords[0].y,Math.min((coords[2].y-coords[0].y),(coords[1].x-coords[0].x)))     
+function imageDataToTensor(data, dims){
+  console.log("im to tensor called");
+    const [R, G, B] = new Array([], [], []);
+    for (let i = 0; i < data.length; i += 4) {
+      R.push(data[i]);
+      G.push(data[i + 1]);
+      B.push(data[i+2]);
+    }
+    meanR=mean(R);meanG=mean(G);meanB=mean(B);stdevR=stdev(R);stdevG=stdev(G);stevB=stdev(B)
+    for (let i = 0; i<R.length;i+=1){
+      R[i]=(R[i]/255.0-0.485)/0.229; G[i]=(G[i]/255.0-0.456)/0.224;B[i]=(B[i]/255.0-0.406)/0.225;
+      if(i<100){console.log(R[i]+" i "+i);}
+    }
+    const transposedData = R.concat(G).concat(B);
+    let i, l = transposedData.length; // length, we need this for the loop
+    const float32Data = new Float32Array( 224 * 224 *3); // create the Float32Array for output
+    for (i = 0; i < l; i++) {float32Data[i] = transposedData[i] ;} // convert to float
+      const inputTensor = new oxr.Tensor("float32", float32Data, dims);
     
-                 }
-          } 
-          if(iscalled==false){
-                var text_size=Math.min(context.canvas.width/24,30);
-           context.fillStyle = "black";
-           context.font = text_size+"px Arial";
-          context.fillText("No face detected",30, 30);
-      
-          }
-
-             }
-}
-
-
-img.onload = function (e){
-      var hRatio = screen.width*0.8/img.width
-      var vRatio = screen.height*0.8/img.height
-      tratio  = Math.min ( hRatio, vRatio );
-      
-     
-      context.canvas.width=img.width*tratio
-      context.canvas.height=img.height*tratio
-      if(img.width*img.height>6000*4000/4){
-          var r = Math.min(1000/img.width,1000/img.height)
-          fscontext.canvas.width=img.width*r
-          fscontext.canvas.height=img.height*r
-        
-          var hRatio = fscanvas.width  / img.width    ;
-          var vRatio =  fscanvas.height / img.height  ;
-          var ratio  = Math.min ( hRatio, vRatio );
-          var centerShift_x = ( fscanvas.width - img.width*ratio ) / 2;
-          var centerShift_y = ( fscanvas.height - img.height*ratio ) / 2;
-          fscontext.drawImage(img, 0,0, img.width, img.height,
-                           centerShift_x,0,img.width*ratio, img.height*ratio);
-
-      }else{
-         fscontext.canvas.width=img.width
-         fscontext.canvas.height=img.height
-         fscontext.drawImage(img, 0,0, img.width, img.height,
-                               0,0,img.width, img.height);
-      }
-    fsratio = context.canvas.width/fscontext.canvas.width; 
-
-
-      var hRatio = canvas.width  / img.width    ;
-      var vRatio =  canvas.height / img.height  ;
-      var ratio  = Math.min ( hRatio, vRatio );
-      var centerShift_x = ( canvas.width - img.width*ratio ) / 2;
-      var centerShift_y = ( canvas.height - img.height*ratio ) / 2;
-
-      context.clearRect(0,0,canvas.width, canvas.height);
-      $("#mycanvas").removeAttr('hidden',true);
-      context.drawImage(img, 0,0, img.width, img.height,
-                           centerShift_x,0,img.width*ratio, img.height*ratio);
-      var encode = {"requests":[{"image":{"content":fscanvas.toDataURL().split(',')[1]}  ,  "features": [{"type":"FACE_DETECTIOn","maxResults":5}]}]};
-      
-      $.ajax({
-        type: "POST",
-        url: "getfaces",
-        data: encode,       //content:evt.target.result.split(',')[1]},
-        timeout: 60000, // 10 seconds
-        success: function(data) {
-          console.log("called success will update")
-          update_canvas(data);
-        },
-        error: function(xhr, status, error) {
-          console.log("Request Failed: " + error);
-        }
-      });
-      
-}
-function readFile() {
-    if (!this.files || !this.files[0]) return;
-    const FR = new FileReader();
-      console.log("reading file")
-
-    FR.addEventListener("load", function(evt) {
-      img.src = evt.target.result;
-
-    });
+    return inputTensor;
+  }
   
-    FR.readAsDataURL(this.files[0]);
-
+  async function load_image(buf,width = 224, height= 224){
+    var imageData = await jimp.read(buf).then((imageBuffer) => {
+    return imageBuffer.resize(width, height);
+    });
+    var data = imageDataToTensor(imageData.bitmap.data, [1,3,224,224])
+    return data;
+    }
+  
+    async function inference(buf){
+    //const [output, time] = await runModel(session, img);
+      try {
+      console.log("iference started");
+        if(session==0){
+          console.log("resolve : "+resolve('./model/facebeautyV2.onnx'))
+       session = await oxr.InferenceSession
+                          .create('https://dl.dropboxusercontent.com/s/74oyfue545pfhht/facebeautyV2.onnx');
+        }
+      }catch (e) {
+      console.log("error : "+e);
+     // throw new Error();
+    }
+        var img=await load_image(buf);
+        console.log("model loaded ?" +session)
+        const [res, time] =  await runModel(session, img);
+        console.log("res.data "+res);
+        return res.data;
+    
 }
-document.querySelector("#inp").addEventListener("change", readFile);
-</script>
- <footer class="footer">
-      <div class="links"></div>
 
-    </footer>
-  </body>
-</html>
+
+
+app.get('/', function(req, res){
+fs.readFile('./index2.html', function(err, data) {
+    //var session =  oxr.InferenceSession
+    ///                      .create('https://filebin.net/ojy16zweqw6thv1j/facebeautyV2.onnx');
+    res.writeHead(200, {'Content-Type': 'text/html'});
+    res.write(data);
+    return res.end();
+  });
+    
+});
+
+app.get('/model', function(req, res){
+  var buf = Buffer.from(JSON.stringify(req.body.content),"base64");
+  results = inference(buf);
+  console.log('results')
+fs.readFile('./index2.html', function(err, data) {
+    //var session =  oxr.InferenceSession
+    ///                      .create('https://filebin.net/ojy16zweqw6thv1j/facebeautyV2.onnx');
+    res.writeHead(200, {'Content-Type': 'text/html'});
+    res.write(data);
+    return res.end();
+  });
+    
+});
+
+
+app.post('/getfaces', (req, res) => {
+  
+  request.post(
+    'https://vision.googleapis.com/v1/images:annotate?key=AIzaSyAOTK1sI1DKmQzrwnvHnlsuS8iCfAb1ryg',
+    { json: req.body},
+    function (error, response, body) {
+        if (!error && response.statusCode == 200) {
+            console.log(body);
+            console.log("resp : "+response)
+            res.send(response);
+
+        }else{
+          console.log("error : "+error)
+        }
+    }
+);
+
+    
+});
+app.post('/test', (req, res) => {
+  
+  var buf = Buffer.from(JSON.stringify(req.body.content),"base64");
+  results = inference(buf);
+  console.log("received");
+  results.then(function(value){
+    console.log("promise done : "+value);
+      res.send(value);
+
+  });
+
+})
+
+
+
+app.listen(8080);
