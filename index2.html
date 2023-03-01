@@ -34,12 +34,19 @@ background-color: #FFB6C1	;
 height: 100vh;
   
 }
+body{
+    background-color: #FFB6C1	;
+
+}
 
 
 input
 {color: transparent;
 }
-
+#title{
+    color:white;
+    font-size:600%;
+}
 
 </style>
   </head>
@@ -47,12 +54,12 @@ input
 
 <div class="h100 container-fluid">
       <div class="h100 col" role="main">
-          <h1>Face Beauty Predictor</h1>
+          <h1 class="text-center" id="title">Face Beauty Predictor</h1>
         <div class="h100 justify-content-center text-center">
         <canvas   id="mycanvas" hidden></canvas>
         <canvas hidden id="fscanvas"></canvas>
 
-        <canvas  id="mycanvas2" width=350px, height=350px></canvas>
+        <canvas  id="mycanvas2" hidden width=350px, height=350px></canvas>
         <div class="text-center black">
             <input id="inp" type="file" name="file" value="" title=" ">
 
@@ -82,12 +89,11 @@ var tratio=1;
 var arrfunction=[];
 
 
-function add_score(data,x,y){
-   console.log("called")
-   context.textColor="white";
+function add_score(data,x,y,l){
+   var text_size=Math.min(l/10,30);
    context.fillStyle = "black";
-   context.font = "15px Arial";
-  context.fillText("Score : "+Math.round(data[0]*2*10)/10,x*fsratio+10, y*fsratio+22);
+   context.font = text_size+"px Arial";
+  context.fillText(Math.round(data[0]*2*10)/10+"/10",x*fsratio+10, y*fsratio+text_size);
    //context.fillText("Score : "+Math.round(1/(1+Math.exp(-3*(data[0]-0.86)+6.21))*10*100)/100+"/10",x+10, y+22);
 
    console.log("x*tratio : "+x*tratio+"  "+y*tratio)
@@ -96,7 +102,7 @@ function add_score(data,x,y){
                 
 }
 
-function call_inference(data,x,y){
+function call_inference(data,x,y,l){
      $.ajax({
                 type: "POST",
                 url: "/test",
@@ -104,7 +110,7 @@ function call_inference(data,x,y){
                 timeout: 600000, // 10 seconds
                 success: function(score){
                     console.log("score : "+JSON.stringify(data))
-                 add_score(score,x,y);
+                 add_score(score,x,y,l);
                },
                 error: function(xhr, status, error) {
                   console.log("Request Failed: " + error);
@@ -116,10 +122,14 @@ function update_canvas(json){
   json=json.body
   var im2=new Image();
   im2.src=fscanvas.toDataURL();
-
+ var iscalled=false;
   im2.onload= function(e){
+
+ 
+
   for(var i=0;i<json.responses[0].faceAnnotations.length;i++){
                  if(json.responses[0].faceAnnotations[i].detectionConfidence>0.4){
+                     iscalled=true;
                  var coords = json.responses[0].faceAnnotations[i].fdBoundingPoly.vertices
                  console.log('coords : '+JSON.stringify(coords))
                  context.fillStyle = "rgba(250,225,255,0.5)";
@@ -147,10 +157,18 @@ function update_canvas(json){
                     swidth,sheight,   // "Get" a `50 * 50` (w * h) area from the source image (crop),
                     0, 0,     // Place the result at 0, 0 in the canvas,
                     dwidth,dheight); // With as width / height: 100 * 100 (scale)
-                    call_inference(canvas2.toDataURL().split(',')[1],coords[0].x,coords[0].y)     
+                    call_inference(canvas2.toDataURL().split(',')[1],coords[0].x,coords[0].y,Math.min((coords[2].y-coords[0].y),(coords[1].x-coords[0].x)))     
     
                  }
           } 
+          if(iscalled==false){
+                var text_size=Math.min(context.canvas.width/24,30);
+           context.fillStyle = "black";
+           context.font = text_size+"px Arial";
+          context.fillText("No face detected",30, 30);
+      
+          }
+
              }
 }
 
