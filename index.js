@@ -126,7 +126,7 @@ fs.readFile('./index2.html', function(err, data) {
 app.post('/getfaces', (req, res) => {
   
   request.post(
-    'https://vision.googleapis.com/v1/images:annotate?key=AIzaSyAOTK1sI1DKmQzrwnvHnlsuS8iCfAb1ryg',
+    'https://vision.googleapis.com/v1/images:annotate?key=XXXXXXXXX',
     { json: req.body},
     function (error, response, body) {
         if (!error && response.statusCode == 200) {
